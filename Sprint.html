@@ -1,0 +1,1145 @@
+<!DOCTYPE html>
+<html lang="en">
+	<head>
+		<meta charset="utf-8">
+		<meta name="viewport" content="width=device-width, user-scalable=no, minimum-scale=1.0, maximum-scale=1.0">
+		<style>
+			body {
+			margin: 0;
+			padding: 0;
+			width: 100%;
+			height: 100%;
+			
+			margin: 0;
+			overflow: hidden;
+			background-color: #AAAAAA;
+			background-attachment: fixed !important;
+			}
+			.lil-gui { 
+				--background-color: #555;
+				--widget-color: #865;
+				--padding: 2px;
+			}
+		</style>
+		<style>
+			body {
+				font-family: Monospace;
+				margin: 0px;
+				overflow: hidden;
+			}
+		</style>
+	</head>
+	<body>
+		<script type="x-shader/x-vertex" id="curvescreenVS">
+			varying vec2 vUv;
+			uniform float curve;
+			uniform sampler2D tex;
+		
+			void main() {
+				vUv = vec2( uv.x, uv.y );
+				float z = ((position.x*position.x)/15.*curve);// + (position.y*position.y)/2.*curve);
+				//float z = sin(position.x/50.);
+    			gl_Position = projectionMatrix * modelViewMatrix * vec4(vec3(position.x,position.y,z), 1.0 );
+			}
+		</script>
+		
+		<script type="x-shader/x-fragment" id="curvescreenFS">
+			varying vec2 vUv;
+			uniform sampler2D tex;
+		
+			void main() {
+				vec3 color = texture2D ( tex, vUv ).rgb;
+				gl_FragColor.rgb = color;
+				gl_FragColor.a = 1.0;
+			}
+		</script>
+
+<script id="vertShaderVid" type="shader">
+varying vec2 vUv;
+void main() {
+    vUv = vec2( uv.x, 1.0-uv.y );
+    gl_Position = projectionMatrix *
+                  modelViewMatrix * vec4(position, 1.0 );
+}
+</script>
+
+<script id="fragShaderVid" type="shader">
+precision highp float;
+const int kernelSizeDiv2 = 2;
+uniform sampler2D image;
+uniform int sizeDiv2;
+uniform vec2 resolution;
+uniform float colorScaleR;
+uniform float colorScaleG;
+uniform float colorScaleB;
+uniform bool invert;
+
+varying vec2 vUv;
+void main(void) {
+
+	vec2 cellSize = 1.0 / resolution.xy;
+	vec2 uv = vUv.xy;
+
+	vec4 textureValue = vec4 ( 0,0,0,0 );
+	for (int i=-sizeDiv2;i<=sizeDiv2;i++)
+		for (int j=-sizeDiv2;j<=sizeDiv2;j++)
+			textureValue += texture2D( image, uv + vec2( float(i)*cellSize.x, float(j)*cellSize.y ) );
+	textureValue /= float ((sizeDiv2*2+1)*(sizeDiv2*2+1));
+	if (invert)
+	{
+		gl_FragColor = vec4(vec3(colorScaleR,colorScaleG,colorScaleB),1.0)*textureValue;
+		gl_FragColor.rgb = vec3 ( 1.0 ) - gl_FragColor.rgb;
+	}
+	else
+	gl_FragColor = vec4(vec3(colorScaleR,colorScaleG,colorScaleB),1.0)*textureValue;
+}
+</script>
+
+<script type="x-shader/x-vertex" id="RGBVertexShader">
+	uniform sampler2D tex;
+	varying vec3 color;
+	uniform int colorspace;
+
+	const float HCV_EPSILON = 1e-10;
+
+	// Used to convert from RGB to XYZ space
+	const mat3 RGB_2_XYZ = (mat3(
+		0.4124564, 0.2126729, 0.0193339,
+		0.3575761, 0.7151522, 0.1191920,
+		0.1804375, 0.0721750, 0.9503041
+	));
+
+	vec3 rgb_to_hsv(vec3 rgb)
+	{
+		vec4 P = (rgb.g < rgb.b) ? vec4(rgb.bg, -1.0, 2.0/3.0) : vec4(rgb.gb, 0.0, -1.0/3.0);
+		vec4 Q = (rgb.r < P.x) ? vec4(P.xyw, rgb.r) : vec4(rgb.r, P.yzx);
+		float C = Q.x - min(Q.w, Q.y);
+		float H = abs((Q.w - Q.y) / (6.0 * C + HCV_EPSILON) + Q.z);
+		float S = C / (Q.x + HCV_EPSILON);
+    	return vec3(H, S, Q.x);
+	}
+
+	void main() {
+		color = texture2D ( tex, position.xy ).rgb;
+		if(colorspace == 1)
+			color = RGB_2_XYZ*color;
+		else if(colorspace == 2)
+			color = rgb_to_hsv(color);
+		//gl_PointSize = 1.0;
+		gl_PointSize = 300.0*100.0/ ( - position.z );
+		vec3 tempclr = color-vec3(.5,.5,.5);
+		vec3 revpos = vec3((0.5-tempclr.x), (0.5-tempclr.y), tempclr.z);
+		gl_Position = projectionMatrix * modelViewMatrix * vec4(revpos, 1.0);
+	}
+</script>
+
+<script type="x-shader/x-fragment" id="RGBFragmentShader">
+	varying vec3 color;
+
+	void main() {
+		float l = length( gl_PointCoord - vec2( 0.5, 0.5 ));
+		if ( l > 0.475 ) discard;
+		gl_FragColor.rgb = color;
+		gl_FragColor.a = 0.5-l;
+		//gl_FragColor.a = 1.0;
+	}
+</script>
+
+<script type="x-shader/x-vertex" id="RGBShadowVertexShader">
+	uniform sampler2D tex;
+	varying vec3 color;
+	uniform int colorspace;
+	uniform int axis;
+
+	const float HCV_EPSILON = 1e-10;
+
+	// Used to convert from RGB to XYZ space
+	const mat3 RGB_2_XYZ = (mat3(
+		0.4124564, 0.2126729, 0.0193339,
+		0.3575761, 0.7151522, 0.1191920,
+		0.1804375, 0.0721750, 0.9503041
+	));
+
+	// Used to convert from XYZ to linear RGB space
+	const mat3 XYZ_2_RGB = (mat3(
+		3.2404542,-0.9692660, 0.0556434,
+		-1.5371385, 1.8760108,-0.2040259,
+		-0.4985314, 0.0415560, 1.0572252
+	));
+
+	vec3 rgb_to_hcv(vec3 rgb)
+	{
+		vec4 P = (rgb.g < rgb.b) ? vec4(rgb.bg, -1.0, 2.0/3.0) : vec4(rgb.gb, 0.0, -1.0/3.0);
+		vec4 Q = (rgb.r < P.x) ? vec4(P.xyw, rgb.r) : vec4(rgb.r, P.yzx);
+		float C = Q.x - min(Q.w, Q.y);
+		float H = abs((Q.w - Q.y) / (6.0 * C + HCV_EPSILON) + Q.z);
+		float S = C / (Q.x + HCV_EPSILON);
+    	return vec3(H, S, Q.x);
+	}
+
+	void main() {
+		color = texture2D ( tex, position.xy ).rgb;
+		if(colorspace == 1)
+			color = RGB_2_XYZ*color;
+		else if(colorspace == 2)
+			color = rgb_to_hcv(color);
+		gl_PointSize = 1.0;
+		//gl_PointSize = 300.0*100.0/ ( - position.z );
+		vec3 tempClr = color-vec3(.5,.5,.5);
+		if(axis == 0)
+			tempClr.z = 0.;
+		else
+			tempClr.y = 0.;
+		gl_Position = projectionMatrix * modelViewMatrix * vec4(tempClr, 1.0);
+	}
+</script>
+
+<script type="x-shader/x-fragment" id="RGBShadowFragmentShader">
+	varying vec3 color;
+
+	void main() {
+		gl_FragColor.a = 0.8;
+		gl_FragColor.rgb = vec3(0.1,0.1,0.1);
+	}
+</script>
+
+<script type="x-shader/x-vertex" id="elevationbasicVS">
+	varying vec2 vUv;
+	uniform float scaleElevation; 
+	uniform vec2 stepPixel;
+	uniform sampler2D tex;
+
+	void main() {
+		vUv = uv;
+		vec3 color = texture2D ( tex, vUv ).rgb;
+		float l = length ( color );
+		vec3 tmp = position;
+		tmp.z = tmp.z + l*scaleElevation;
+		
+		gl_Position = projectionMatrix * modelViewMatrix * vec4(tmp, 1.0);
+	}
+</script>
+
+<script type="x-shader/x-fragment" id="elevationbasicFS">
+	varying vec2 vUv;
+	uniform sampler2D tex;
+
+	void main() {
+		
+		vec3 color = texture2D ( tex, vUv ).rgb;
+		gl_FragColor.rgb = color;
+		gl_FragColor.a = 1.;
+	}
+</script>
+
+<script type="x-shader/x-vertex" id="elevationshadowbasicVS">
+	varying vec2 vUv;
+	uniform float scaleElevation; 
+	uniform vec2 stepPixel;
+	uniform sampler2D tex;
+
+	void main() {
+		vUv = uv;
+		vec3 color = texture2D ( tex, vUv ).rgb;
+		float l = length ( color );
+		vec3 tmp = position;
+		tmp.z = tmp.z + l*scaleElevation;
+		tmp.y = 0.;
+		
+		gl_Position = projectionMatrix * modelViewMatrix * vec4(tmp, 1.0);
+	}
+</script>
+
+<script type="x-shader/x-fragment" id="elevationshadowbasicFS">
+	varying vec2 vUv;
+	uniform sampler2D tex;
+
+	void main() {
+		
+		vec3 color = texture2D ( tex, vUv ).rgb;
+		gl_FragColor.rgb = vec3(0.1,0.1,0.1);
+		gl_FragColor.a = 1.;
+	}
+</script>
+
+<script type="x-shader/x-vertex" id="elevationlightVS">
+	uniform float discret; 
+	uniform float scaleElevation; 
+	uniform vec2 stepPixel;
+	uniform vec3 lightDir;
+	uniform float lightIntensity;
+	uniform sampler2D tex;
+	varying vec2 vUv;
+	varying float NdotL;
+
+
+	float function ( vec4 color )
+	{
+		return length ( color.rgb );
+	} 
+
+	void main() {
+		vUv = uv;
+		float l = function ( texture2D ( tex, vUv ) );
+		vec3 tmp = position;
+		tmp.z = tmp.z + l*scaleElevation;
+
+		float diffX = function(texture2D (tex, vUv+vec2 (stepPixel.x*discret,0.0 ) ))-function(texture2D (tex, vUv+vec2 (-stepPixel.x*discret,0.0 ) ));
+		float diffY = function(texture2D (tex, vUv+vec2 (0.0,stepPixel.y*discret ) ))-function(texture2D (tex, vUv+vec2 (0.0,-stepPixel.y*discret ) ));
+		vec3 normal = normalize(cross ( vec3 ( 1.0, 0.0, 6.0*scaleElevation*diffX ),
+										vec3 ( 0.0, 1.0, 6.0*scaleElevation*diffY ) ) );
+		  NdotL = lightIntensity*(dot(normal, lightDir));
+
+		gl_Position = projectionMatrix * modelViewMatrix * vec4(tmp, 1.0);
+	}
+</script>
+
+<script type="x-shader/x-fragment" id="elevationlightFS">
+	varying vec2 vUv;
+	varying float NdotL;
+
+	uniform sampler2D tex;
+
+	void main() {
+		vec3 color = texture2D ( tex, vUv ).rgb;
+		gl_FragColor.rgb = vec3(NdotL)*color;
+		gl_FragColor.a = 1.0;
+	}
+</script>
+<!--script src='./node_modules/threex.domevents/examples/vendor/three.js/build/three-min.js'></script-->
+<script type="text/javascript" src="http://ajax.googleapis.com/ajax/libs/jquery/1.8/jquery.min.js"></script>
+<script src='./node_modules/three/build/three.min.js'></script>  
+<script src='./node_modules/threex.domevents/threex.domevents.js'></script>
+
+<script type="module">
+
+//import * as THREE from 'https://cdn.skypack.dev/three@0.136.0/build/three.module.js';
+import { OrbitControls } from 'https://cdn.skypack.dev/three@0.136.0/examples/jsm/controls/OrbitControls.js';
+import { GUI } from 'https://cdn.skypack.dev/three@0.136.0/examples/jsm/libs/lil-gui.module.min';
+import { RoomEnvironment } from 'https://cdn.skypack.dev/three@0.136.0/examples/jsm/environments/RoomEnvironment.js';
+import { HTMLMesh } from 'https://cdn.skypack.dev/three@0.136.0/examples/jsm/interactive/HTMLMesh.js';
+import { InteractiveGroup } from 'https://cdn.skypack.dev/three@0.136.0/examples/jsm/interactive/InteractiveGroup.js';
+import {FontLoader} from 'https://cdn.skypack.dev/three@0.134.0/examples/jsm/loaders/FontLoader.js';
+import {TextGeometry} from 'https://cdn.skypack.dev/three@0.134.0/examples/jsm/geometries/TextGeometry.js';
+import { VRButton } from 'https://cdn.skypack.dev/three@0.136.0/examples/jsm/webxr/VRButton.js';	
+import { XRControllerModelFactory } from 'https://cdn.skypack.dev/three@0.136.0/examples/jsm/webxr/XRControllerModelFactory.js';
+
+//import ThreeMeshUI from 'https://unpkg.com/three-mesh-ui'
+//import {} from './node_modules/threex.domevents/threex.domevents.js'
+
+//var initializeDomEvents = require('threex.domevents')
+//var THREEx = {}
+//initializeDomEvents(THREE, THREEx)
+
+var camera, controls, scene, renderer, container;
+var plane;
+var projector, mouse = { x: 0, y: 0 }, INTERSECTED;
+
+// VIDEO AND THE ASSOCIATED TEXTURE
+var video,videoTexture;
+
+// GUI
+var gui;
+
+init();
+animate();
+
+function init () {
+	
+    container = document.createElement( 'div' );
+	document.body.appendChild( container );
+	
+	scene = new THREE.Scene(); 
+	
+	//pmremGenerator.compileCubemapShader();
+
+	renderer = new THREE.WebGLRenderer( { antialias: true, alpha: true } );
+	renderer.autoClear = false;
+	renderer.setPixelRatio( window.devicePixelRatio );
+	renderer.setSize( window.innerWidth, window.innerHeight );
+	renderer.shadowMap.enabled = false;
+
+	document.body.appendChild( VRButton.createButton( renderer) );
+	renderer.xr.enabled = true;
+
+	const pmremGenerator = new THREE.PMREMGenerator( renderer );
+	scene.environment = pmremGenerator.fromScene(new RoomEnvironment(), 0.04).texture;
+
+	container.appendChild( renderer.domElement );
+
+	camera = new THREE.PerspectiveCamera( 75, window.innerWidth / window.innerHeight, 0.001, 1000 );
+	camera.position.z = 2;
+	var camGroup = new THREE.Object3D();
+	camGroup.add(camera);
+	//camera.position.z = 6.5;
+	//camera.position.y = 0;
+
+	camGroup.position.z = 2;
+	camGroup.position.y = -1;
+	controls = new OrbitControls( camera, renderer.domElement );
+	controls.minDistance = 0.005;
+	controls.maxDistance = 5000.0;
+	controls.enableRotate = true;
+	controls.addEventListener( 'change', render );
+	controls.update();
+
+	var domEvents	= new THREEx.DomEvents(camera, renderer.domElement)
+	var backgroundMat;
+	var backgroundMesh;
+	const loader = new THREE.TextureLoader();
+	loader.load('AdobeStock_337624179.jpeg', function (texture) {
+		const backgroundGeom = new THREE.SphereGeometry( 500, 60, 40 );
+		// invert the geometry on the x-axis so that all of the faces point inward
+		backgroundGeom.scale( - 1, 1, 1 );
+
+		backgroundMat = new THREE.MeshBasicMaterial( { map: texture, side:THREE.DoubleSide, color:0x333333 } );
+
+		backgroundMesh  = new THREE.Mesh( backgroundGeom, backgroundMat );
+		backgroundMesh.rotation.y = - Math.PI / 2;
+		backgroundMesh.receiveShadow = true;
+		scene.add( backgroundMesh );
+
+	});
+
+	const txtloader = new FontLoader();
+	var activeRotateMesh = null;
+
+
+	var light = new THREE.DirectionalLight( 0x888888, 1, 10, 1 );
+	light.position.set( 0, 0, 5 );
+	light.castShadow = true;
+	//scene.add( light );
+
+	//const helper = new THREE.DirectionalLightHelper( light, 5 );
+	//scene.add( helper );
+
+	video = document.createElement('video');
+	video.src = 'video.mp4';
+	video.load();
+	video.muted = true;
+	video.loop = true;
+
+	video.onloadeddata = function () 
+	{ 
+		videoTexture = new THREE.VideoTexture( video );
+		videoTexture.minFilter = THREE.NearestFilter;
+		videoTexture.magFilter = THREE.NearestFilter;
+		videoTexture.generateMipmaps = false; 
+		videoTexture.format = THREE.RGBAFormat;
+
+		var screenGeom = new THREE.PlaneGeometry( 10, 10*video.videoHeight/video.videoWidth,500,500 );
+
+		var pausePlayObj =
+		{
+			pausePlay: function () 
+			{
+				if (!video.paused)
+				{
+					console.log ( "pause" );
+					video.pause();
+				}
+				else
+				{
+					console.log ( "play" );
+					video.play();
+				}
+			},
+			add10sec: function ()
+			{
+				video.currentTime = video.currentTime + 10;
+				console.log ( video.currentTime  );
+			},
+			RGB:function()
+			{
+				colorSpaceMaterial.uniforms.colorspace.value = 0;
+				ccShadowbaseShadermat.uniforms.colorspace.value = 0;
+				ccShadowShadermat.uniforms.colorspace.value = 0;
+			},
+			XYZ:function()
+			{
+				colorSpaceMaterial.uniforms.colorspace.value = 1;
+				ccShadowbaseShadermat.uniforms.colorspace.value = 1;
+				ccShadowShadermat.uniforms.colorspace.value = 1;
+			},
+			HSV:function()
+			{
+				colorSpaceMaterial.uniforms.colorspace.value = 2;
+				ccShadowbaseShadermat.uniforms.colorspace.value = 2;
+				ccShadowShadermat.uniforms.colorspace.value = 2;
+			},
+			ToggleBackground: function()
+			{
+				if(backgroundMesh.material.map == undefined)
+					backgroundMesh.material.map = new THREE.TextureLoader().load('AdobeStock_337624179.jpg');
+				else
+					backgroundMesh.material.map == undefined;
+				backgroundMesh.material.needsUpdate = true;
+			},
+			curve:0.1,
+			Colorspace:"RGB",
+			LookAt:"Screen"
+		};
+
+		var screenMaterial = new THREE.ShaderMaterial( {
+						vertexShader: document.querySelector( '#curvescreenVS' ).textContent.trim(),
+						fragmentShader: document.querySelector( '#curvescreenFS' ).textContent.trim(),
+						uniforms: {
+							curve: { value: pausePlayObj.curve },
+							tex: { value: videoTexture },
+							},
+						side: THREE.DoubleSide,
+					} );
+
+		var screenplane = new THREE.Mesh( screenGeom, screenMaterial );
+		screenplane.position.z = -10.5;
+		screenplane.receiveShadow = true;
+		screenplane.castShadow = true;
+		scene.add( screenplane );
+
+		
+
+
+		/////////////////////////ELEVATION///////////////////////////
+
+		var stdMatOptions = { roughness: 0.2, metalness: 0.7, color:0xffffff };
+
+		var elevationGroup = new THREE.Object3D();
+
+		var eleWallGeometry = new THREE.BoxGeometry( 3, 3*video.videoHeight/video.videoWidth, .3, 10, 10, 2 );
+		var eleWallMaterial = new THREE.MeshStandardMaterial( stdMatOptions );
+		var eleWallMesh = new THREE.Mesh( eleWallGeometry, eleWallMaterial );
+		eleWallMesh.position.z = -1.5;
+		eleWallMesh.position.x = -2;
+		eleWallMesh.castShadow = true;
+		elevationGroup.add( eleWallMesh );
+
+		var eleBaseGeometry = new THREE.BoxGeometry( 3, 0.3, 3*video.videoHeight/video.videoWidth, 10, 10, 2 );
+		var elebaseMaterial = new THREE.MeshStandardMaterial( stdMatOptions );
+		var eleBaseMesh = new THREE.Mesh( eleBaseGeometry, elebaseMaterial );
+		eleBaseMesh.position.z = -0.75;
+		eleBaseMesh.position.x = -2;
+		eleBaseMesh.position.y = -1;
+		eleBaseMesh.castShadow = true;
+		elevationGroup.add( eleBaseMesh );
+
+		domEvents.addEventListener(eleBaseMesh, 'mouseover', function(event) {
+			eleBaseMesh.material.color.setHex(0xff0000);
+			//return renderer.render(scene, camera);
+		});
+		domEvents.addEventListener(eleBaseMesh, 'mouseout', function(event) {
+			eleBaseMesh.material.color.setHex(0xffffff);
+		});
+		domEvents.addEventListener(eleBaseMesh, 'click', function(event){
+    console.log('you clicked on the mesh')
+}, false)
+
+
+		const loader = new THREE.TextureLoader();
+		var texture = videoTexture;
+		//loader.load( 'grenouille-gaus.jpg', function ( texture ) 
+		//{
+
+			var scaleElevation = 0.75;
+			var discret = 2;
+
+			var basicElevationMaterial = new THREE.ShaderMaterial( {
+				vertexShader: document.querySelector( '#elevationbasicVS' ).textContent.trim(),
+				fragmentShader: document.querySelector( '#elevationbasicFS' ).textContent.trim(),
+				uniforms: {
+					scaleElevation: { value: scaleElevation },
+					tex: { value: texture },
+					},
+				
+			} );
+
+			var lightDir = new THREE.Vector3 (-.5,-.5,.9);
+			lightDir.normalize();
+			console.log ( lightDir );
+			var lightIntensity = 1.25;
+
+			var lightElevationMaterial = new THREE.ShaderMaterial( {
+				vertexShader: document.querySelector( '#elevationlightVS' ).textContent.trim(),
+				fragmentShader: document.querySelector( '#elevationlightFS' ).textContent.trim(),
+				uniforms: {
+					lightDir: { type: '3f', value: lightDir },
+					lightIntensity: { value: lightIntensity },
+					discret: { value: 2 },
+					scaleElevation: { value: scaleElevation },
+					tex: { value: texture },
+					stepPixel: { type: '2f', value: new THREE.Vector2( 1.0/(texture.image.width-1.0), 1.0/(texture.image.height-1.0) )}
+					}
+			} );
+
+			console.log ( texture.image.width );
+			console.log ( texture.image.height );
+			var scale = 2.0;
+			var factor = video.videoHeight/video.videoWidth;
+			var planeGeometry = new THREE.PlaneGeometry( scale, scale*factor, video.videoWidth/discret, video.videoHeight/discret );  
+			var plane = new THREE.Mesh( planeGeometry, basicElevationMaterial);
+			plane.castShadow = true;
+			plane.material.side = THREE.DoubleSide;
+			plane.position.z = -1.25;
+			plane.position.x = -2;
+			//plane.rotation.z = Math.PI;
+
+			eleBaseMesh.customDepthMaterial = new THREE.MeshDepthMaterial( {
+				depthPacking: THREE.RGBADepthPacking,
+				map: texture,
+				alphaTest: 0.5
+			} );
+
+			elevationGroup.add(plane);
+
+			//Shadow plane
+			var eleshadowPlaneGeom = new THREE.PlaneGeometry( scale, scale*factor,500,500);
+			var eleshadowMesh = new THREE.Mesh(eleshadowPlaneGeom, new THREE.MeshStandardMaterial( {color:0x191919} ));
+			eleshadowMesh.position.set(-2,-0.2,-1.345);
+			elevationGroup.add(eleshadowMesh);
+
+			var eleShadowbaseShadermat = new THREE.ShaderMaterial({
+			vertexShader: document.getElementById('elevationshadowbasicVS').textContent,
+			fragmentShader: document.getElementById('elevationshadowbasicFS').textContent,
+			uniforms: {
+					lightDir: { type: '3f', value: lightDir },
+					lightIntensity: { value: lightIntensity },
+					discret: { value: 2 },
+					scaleElevation: { value: scaleElevation },
+					tex: { value: texture },
+					stepPixel: { type: '2f', value: new THREE.Vector2( 1.0/(texture.image.width-1.0), 1.0/(texture.image.height-1.0) )}
+					}
+			//blending: THREE.AdditiveBlending,
+			//depthTest: false,
+			//transparent: true
+		});
+
+		var eleshadowbaseplane = new THREE.Mesh( eleshadowPlaneGeom,eleShadowbaseShadermat);
+		eleshadowbaseplane.position.z = -1.25
+		eleshadowbaseplane.position.x = -2
+		eleshadowbaseplane.position.y = -0.84
+		eleshadowbaseplane.castShadow = true;
+		elevationGroup.add(eleshadowbaseplane);
+
+			//elevationGroup.rotation.y = Math.PI/4;
+			scene.add(elevationGroup);
+
+			var eleRotate = false;
+var eledefQuat = null;
+
+
+var ccRotate = false;
+		txtloader.load('https://threejs.org/examples/fonts/helvetiker_regular.typeface.json', (font) => {
+			const text = 'Rotate';
+			const textgeom = new TextGeometry(text, {
+				font: font,
+				size: 0.1,
+				height: 0.2,
+				curveSegments: 1,
+				bevelEnabled: true,
+				bevelThickness: 0.01,
+				bevelSize: 0.01,
+				bevelSegments: 1,
+			});
+        //geometries.push(textgeom);
+        //var ccrotateMaterial = new THREE.MeshNormalMaterial();
+        var elerotateMesh = new THREE.Mesh( textgeom, new THREE.MeshStandardMaterial( stdMatOptions ));
+        elerotateMesh.position.z = 0;
+		elerotateMesh.position.x = -1.5;
+		elerotateMesh.position.y = 0.8;
+        elerotateMesh.castShadow = true;
+		elevationGroup.add( elerotateMesh );
+		domEvents.addEventListener(elerotateMesh, 'click', function(event) {
+			activeRotateMesh = plane;
+			ccRotate = !ccRotate;
+			controls.enabled = !controls.enabled;
+			if(controls.enabled)
+				elerotateMesh.material.color.setHex(0xffffff);
+			else
+				elerotateMesh.material.color.setHex(0xff0000);
+		});
+
+		txtloader.load('https://threejs.org/examples/fonts/helvetiker_regular.typeface.json', (font) => {
+			const text = 'Reset';
+			const textgeom = new TextGeometry(text, {
+				font: font,
+				size: 0.1,
+				height: 0.2,
+				curveSegments: 1,
+				bevelEnabled: true,
+				bevelThickness: 0.01,
+				bevelSize: 0.01,
+				bevelSegments: 1,
+			});
+		var eleresetMesh = new THREE.Mesh( textgeom, new THREE.MeshStandardMaterial( stdMatOptions ));
+        eleresetMesh.position.z = 0;
+		eleresetMesh.position.x = -2;
+		eleresetMesh.position.y = 0.8;
+        eleresetMesh.castShadow = true;
+		elevationGroup.add( eleresetMesh );
+		domEvents.addEventListener(eleresetMesh, 'click', function(event) {
+			//points.applyQuaternion(new THREE.Quaternion(ccdefQuat._x,ccdefQuat._y,ccdefQuat._z,ccdefQuat._w));
+			plane.rotation.x = 0;
+			plane.rotation.y = 0;
+			plane.rotation.z = 0;
+	});
+    });
+});
+/*
+		domEvents.addEventListener(ccbaseMesh, 'click', function(event) {
+			//points.applyQuaternion(new THREE.Quaternion(ccdefQuat._x,ccdefQuat._y,ccdefQuat._z,ccdefQuat._w));
+			points.rotation.x = 0;
+			points.rotation.y = 0;
+			points.rotation.z = Math.PI;
+		});
+*/
+/*
+			$(renderer.domElement).on('mousedown', function(e) {
+				//if(!e.ctrlKey) return;
+				isDragging = true;
+			})
+			.on('mousemove', function(e) {
+				//if(!e.ctrlKey) return;
+				//if(isDragging)
+				//	controls.enabled = false;
+				//console.log(e);
+				var deltaMove = {
+					x: e.offsetX-previousMousePosition.x,
+					y: e.offsetY-previousMousePosition.y
+				};
+
+				if(isDragging && eleRotate) {
+
+					if(eledefQuat == null)
+						eledefQuat = JSON.parse(JSON.stringify(plane.quaternion));;
+						
+					var deltaRotationQuaternion = new THREE.Quaternion()
+						.setFromEuler(new THREE.Euler(
+							toRadians(deltaMove.y * 1),
+							toRadians(deltaMove.x * 1),
+							0,
+							'XYZ'
+						));
+					
+						plane.quaternion.multiplyQuaternions(deltaRotationQuaternion, plane.quaternion);
+				}
+				
+				previousMousePosition = {
+					x: e.offsetX,
+					y: e.offsetY
+				};
+			});
+			$(document).on('mouseup', function(e) {
+				//if(!e.ctrlKey) return;
+				isDragging = false;
+			});
+*/
+		//});
+
+		
+		//////////////////////////ColorCloud///////////////////////////
+
+		var discret = 1;
+		var ccGroup = new THREE.Object3D();
+
+		var colorSpaceMaterial = new THREE.ShaderMaterial({
+			vertexShader: document.getElementById('RGBVertexShader').textContent,
+			fragmentShader: document.getElementById('RGBFragmentShader').textContent,
+			uniforms: {
+				tex: { value: texture },
+				colorspace:{ value:0}
+			},
+			//blending: THREE.AdditiveBlending,
+			//depthTest: false,
+			transparent: true
+		});
+
+		const ccgeometry = new THREE.BufferGeometry();
+		const positions = [];
+		let compteur = 0;
+		for (let i = 0; i < video.videoHeight; i += discret)
+			for (let j = 0; j < video.videoWidth; j += discret) {
+				// positions
+
+				const x = (i+0.5) / video.videoHeight;
+				const y = (j+0.5) / video.videoWidth;
+				const z = 0;
+
+				positions.push(x, y, z);
+				compteur++;
+			}
+
+		//console.log ( compteur );
+		//console.log ( video.videoHeight );
+		ccgeometry.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
+		ccgeometry.computeBoundingSphere();
+
+		var points = new THREE.Points(ccgeometry, colorSpaceMaterial);
+		//points.position.x += 2.5;
+		//points.position.z += -0.5;
+		//points.position.y += 0.31;
+//Relative to axis group
+		points.position.x += 1.2;
+		points.position.z += 0.6;
+		points.position.y += 1;
+		points.rotation.z = Math.PI;
+		//ccGroup.add(points);
+
+		var ccplaneGeometry = new THREE.PlaneGeometry( scale, scale*factor);
+		var ccplane = new THREE.Mesh( ccplaneGeometry, new THREE.MeshStandardMaterial( { roughness: 1.0, metalness: 0.0, color: 0xffffff, side:THREE.DoubleSide } ));
+		ccplane.position.z = -1.5
+		ccplane.position.x = 2
+		//ccplane.castShadow = true;
+		//scene.add(ccplane);
+
+		var ccWallGeom = new THREE.BoxGeometry( 3, 3*video.videoHeight/video.videoWidth, .3, 10, 10, 2 );
+		var ccWallMaterial = new THREE.MeshStandardMaterial( stdMatOptions );
+		var ccWallMesh = new THREE.Mesh( ccWallGeom, ccWallMaterial );
+		ccWallMesh.position.z = -1.5;
+		ccWallMesh.position.x = 2;
+		ccWallMesh.castShadow = true;
+		ccWallMesh.receiveShadow = true;
+		ccGroup.add( ccWallMesh );
+
+		var ccBaseGeom = new THREE.BoxGeometry( 3, 0.3, 3*video.videoHeight/video.videoWidth, 10, 10, 2 );
+		var ccBaseMaterial = new THREE.MeshStandardMaterial( stdMatOptions );
+		var ccbaseMesh = new THREE.Mesh( ccBaseGeom, ccBaseMaterial );
+		ccbaseMesh.position.y = -1;
+		ccbaseMesh.position.x = 2;
+		ccbaseMesh.position.z = -0.75;
+		ccbaseMesh.castShadow = true;
+		ccbaseMesh.receiveShadow = true;
+		ccGroup.add( ccbaseMesh );
+
+		var ccShadowShadermat = new THREE.ShaderMaterial({
+			vertexShader: document.getElementById('RGBShadowVertexShader').textContent,
+			fragmentShader: document.getElementById('RGBShadowFragmentShader').textContent,
+			uniforms: {
+				tex: { value: texture },
+				colorspace:{ value:0},
+				axis:{value:0}
+			},
+			//blending: THREE.AdditiveBlending,
+			//depthTest: false,
+			//transparent: true
+		});
+
+		var ccshadowplane = new THREE.Points( ccgeometry,ccShadowShadermat);
+		ccshadowplane.position.z = -1.35
+		ccshadowplane.position.x = 2
+		ccshadowplane.position.y = -0.3
+		ccshadowplane.castShadow = true;
+		ccGroup.add(ccshadowplane);
+ 
+		var ccShadowbaseShadermat = new THREE.ShaderMaterial({
+			vertexShader: document.getElementById('RGBShadowVertexShader').textContent,
+			fragmentShader: document.getElementById('RGBShadowFragmentShader').textContent,
+			uniforms: {
+				tex: { value: texture },
+				colorspace:{ value:0},
+				axis:{value:1}
+			},
+			//blending: THREE.AdditiveBlending,
+			//depthTest: false,
+			//transparent: true
+		});
+
+		var ccshadowbaseplane = new THREE.Points( ccgeometry,ccShadowbaseShadermat);
+		ccshadowbaseplane.position.z = -0.55
+		ccshadowbaseplane.position.x = 2
+		ccshadowbaseplane.position.y = -0.85
+		ccshadowbaseplane.castShadow = true;
+		ccGroup.add(ccshadowbaseplane);
+		
+		//Axis
+		var axisLen = 1;
+		var axisJointgeom = new THREE.SphereGeometry(0.06,50,50);
+		var axisMat = JSON.parse(JSON.stringify(stdMatOptions));
+		axisMat.color = 0x555555;
+		var axisJointmesh = new THREE.Mesh( axisJointgeom, new THREE.MeshStandardMaterial( axisMat ));
+		var axisgeom = new THREE.CylinderGeometry(0.05,0.05,axisLen,50);
+		var axis1mesh = new THREE.Mesh( axisgeom, new THREE.MeshStandardMaterial( axisMat ));
+		var axis2mesh = new THREE.Mesh( axisgeom, new THREE.MeshStandardMaterial( axisMat ));
+		var axis3mesh = new THREE.Mesh( axisgeom, new THREE.MeshStandardMaterial( axisMat ));
+
+		var ccAxisGroup = new THREE.Object3D();
+		ccAxisGroup.add(axisJointmesh);
+		axis1mesh.translateY(axisLen*0.5);
+		axis1mesh.castShadow = true;
+		axisJointmesh.add(axis1mesh);
+		axis2mesh.rotation.set(Math.PI/2,0,0);
+		axis2mesh.translateY(axisLen*0.5);
+		axisJointmesh.add(axis2mesh);
+		axis3mesh.rotation.set(0,0,-Math.PI/2);
+		axis3mesh.translateY(axisLen*0.5);
+		axisJointmesh.add(axis3mesh);
+		axisJointmesh.position.x -= 0.1;
+		axisJointmesh.add(points);
+		axisJointmesh.castShadow = true;
+
+		ccAxisGroup.position.set(1.5,-0.7,-1);
+
+		ccGroup.add(ccAxisGroup)
+
+
+		function toRadians(angle) {
+			return angle * (Math.PI / 180);
+		}
+
+		function toDegrees(angle) {
+			return angle * (180 / Math.PI);
+		}
+
+		var isDragging = true;
+		var previousMousePosition = {
+			x: 0,
+			y: 0
+		};
+/*
+		var ccrotateBtn = new THREE.BoxGeometry( 0.3, 0.2, .1, 10, 10, 2 );
+		var ccrotateMaterial = new THREE.MeshStandardMaterial( stdMatOptions );
+		var ccrotateMesh = new THREE.Mesh( ccrotateBtn, ccrotateMaterial );
+		ccrotateMesh.position.z = 0;
+		ccrotateMesh.position.x = 1;
+		ccrotateMesh.position.y = -1.5;
+		ccrotateMesh.castShadow = true;
+		ccGroup.add( ccrotateMesh );
+*/
+
+var ccdefQuat = null;
+
+
+		
+		txtloader.load('https://threejs.org/examples/fonts/helvetiker_regular.typeface.json', (font) => {
+			const text = 'Rotate';
+			const textgeom = new TextGeometry(text, {
+				font: font,
+				size: 0.1,
+				height: 0.2,
+				curveSegments: 1,
+				bevelEnabled: true,
+				bevelThickness: 0.01,
+				bevelSize: 0.01,
+				bevelSegments: 1,
+			});
+        //geometries.push(textgeom);
+        //var ccrotateMaterial = new THREE.MeshNormalMaterial();
+        var ccrotateMesh = new THREE.Mesh( textgeom, new THREE.MeshStandardMaterial( stdMatOptions ));
+        ccrotateMesh.position.z = 0;
+		ccrotateMesh.position.x = 1.2;
+		ccrotateMesh.position.y = 0.8;
+        ccrotateMesh.castShadow = true;
+		ccGroup.add( ccrotateMesh );
+		domEvents.addEventListener(ccrotateMesh, 'click', function(event) {
+			activeRotateMesh = ccAxisGroup;
+			ccRotate = !ccRotate;
+			controls.enabled = !controls.enabled;
+			if(controls.enabled)
+				ccrotateMesh.material.color.setHex(0xffffff);
+			else
+				ccrotateMesh.material.color.setHex(0xff0000);
+		});
+
+		txtloader.load('https://threejs.org/examples/fonts/helvetiker_regular.typeface.json', (font) => {
+			const text = 'Reset';
+			const textgeom = new TextGeometry(text, {
+				font: font,
+				size: 0.1,
+				height: 0.2,
+				curveSegments: 1,
+				bevelEnabled: true,
+				bevelThickness: 0.01,
+				bevelSize: 0.01,
+				bevelSegments: 1,
+			});
+		var ccresetMesh = new THREE.Mesh( textgeom, new THREE.MeshStandardMaterial( stdMatOptions ));
+        ccresetMesh.position.z = 0;
+		ccresetMesh.position.x = 1.7;
+		ccresetMesh.position.y = 0.8;
+        ccresetMesh.castShadow = true;
+		ccGroup.add( ccresetMesh );
+		domEvents.addEventListener(ccresetMesh, 'click', function(event) {
+			//points.applyQuaternion(new THREE.Quaternion(ccdefQuat._x,ccdefQuat._y,ccdefQuat._z,ccdefQuat._w));
+			//points.rotation.x = 0;
+			//points.rotation.y = 0;
+			//points.rotation.z = Math.PI;
+
+			ccAxisGroup.rotation.x = 0;
+			ccAxisGroup.rotation.y = 0;
+			ccAxisGroup.rotation.z = 0;//Math.PI;
+		});
+	});
+    });
+
+		var currentModel = null;
+/*
+		domEvents.addEventListener(ccbaseMesh, 'click', function(event) {
+			//points.applyQuaternion(new THREE.Quaternion(ccdefQuat._x,ccdefQuat._y,ccdefQuat._z,ccdefQuat._w));
+			points.rotation.x = 0;
+			points.rotation.y = 0;
+			points.rotation.z = Math.PI;
+		});
+		*/
+
+			$(renderer.domElement).on('mousedown', function(e) {
+				//if(!e.ctrlKey) return;
+				isDragging = true;
+			})
+			.on('mousemove', function(e) {
+				//if(!e.ctrlKey) return;
+				//if(isDragging)
+				//	controls.enabled = false;
+				//console.log(e);
+				var deltaMove = {
+					x: e.offsetX-previousMousePosition.x,
+					y: e.offsetY-previousMousePosition.y
+				};
+
+				if(isDragging && ccRotate) {
+
+					if(ccdefQuat == null)
+						ccdefQuat = JSON.parse(JSON.stringify(activeRotateMesh.quaternion));
+						
+					var deltaRotationQuaternion = new THREE.Quaternion()
+						.setFromEuler(new THREE.Euler(
+							toRadians(deltaMove.y * 1),
+							toRadians(deltaMove.x * 1),
+							0,
+							'XYZ'
+						));
+					
+						activeRotateMesh.quaternion.multiplyQuaternions(deltaRotationQuaternion, activeRotateMesh.quaternion);
+				}
+				
+				previousMousePosition = {
+					x: e.offsetX,
+					y: e.offsetY
+				};
+			});
+			/* */
+			$(document).on('mouseup', function(e) {
+				//if(!e.ctrlKey) return;
+				isDragging = false;
+			});
+			
+			//return renderer.render(scene, camera);
+		//});
+
+
+		/////////////////
+
+		var ccPLight = new THREE.SpotLight( 0x888888, 0.05, 10, 1 );
+		ccPLight.position.set( 0.5, 0, 1 );
+		ccPLight.castShadow = true;
+		//ccPLight.rotation.x = -Math.PI/2;
+		//ccPLight.rotation.y = -Math.PI/4;
+		const plhelper = new THREE.SpotLightHelper( ccPLight, 5 );
+		//scene.add( plhelper );
+		//ccGroup.add(ccPLight);
+
+		//ccGroup.rotation.z = Math.PI;
+
+		scene.add(ccGroup);
+		///////////////////////////////////////////////////////
+
+		//Make sphere orientation for groups
+		elevationGroup.position.x -= 0.5;
+		elevationGroup.position.z -= 1;
+		elevationGroup.rotation.y = Math.PI/6;
+		ccGroup.position.x += 0.5;
+		ccGroup.position.z -= 1;
+		ccGroup.rotation.y = -Math.PI/6;
+
+		
+
+		gui = new GUI();
+		gui.add(pausePlayObj,'pausePlay').name ('Pause/play video');
+		gui.add(pausePlayObj,'add10sec').name ('Add 10 seconds');
+		gui.add(pausePlayObj , 'curve', 0.1, 5,0.1).onChange((val)=>{
+			screenplane.scale.set(1+val/5, 1, 1);
+			screenMaterial.uniforms.curve.value = val;
+		});
+		gui.add(pausePlayObj,'RGB').name ('RGB');
+		gui.add(pausePlayObj,'XYZ').name ('XYZ');
+		gui.add(pausePlayObj,'HSV').name ('HSV');
+		gui.add(pausePlayObj,'ToggleBackground').name ('ToggleBackground');
+
+		gui.domElement.style.visibility = 'hidden';
+
+		const group = new InteractiveGroup( renderer, camera );
+		scene.add( group );
+
+		const mesh = new HTMLMesh( gui.domElement );
+		mesh.position.x = 0;
+		mesh.position.y = -1.5;
+		mesh.position.z = - 0.5;
+		mesh.scale.setScalar( 4 );
+		group.add( mesh );
+
+
+		domEvents.addEventListener(mesh, 'mouseover', function(event) {
+			controls.enabled = false;
+		});
+		domEvents.addEventListener(mesh, 'mouseout', function(event) {
+			controls.enabled = true;
+		});
+
+		video.play();
+
+		};
+		
+		window.addEventListener( 'resize', onWindowResize, false );
+
+		const geometry = new THREE.BufferGeometry();
+		geometry.setFromPoints( [ new THREE.Vector3( 0, 0, 0 ), new THREE.Vector3( 0, 0, - 5 ) ] );
+
+		const controller1 = renderer.xr.getController( 0 );
+		controller1.add( new THREE.Line( geometry ) );
+		scene.add( controller1 );
+
+		const controller2 = renderer.xr.getController( 1 );
+		controller2.add( new THREE.Line( geometry ) );
+		scene.add( controller2 );
+
+		//
+
+		const controllerModelFactory = new XRControllerModelFactory();
+
+		const controllerGrip1 = renderer.xr.getControllerGrip( 0 );
+		controllerGrip1.add( controllerModelFactory.createControllerModel( controllerGrip1 ) );
+		scene.add( controllerGrip1 );
+
+		const controllerGrip2 = renderer.xr.getControllerGrip( 1 );
+		controllerGrip2.add( controllerModelFactory.createControllerModel( controllerGrip2 ) );
+		scene.add( controllerGrip2 );
+}
+
+
+function render () {
+	renderer.clear();
+	renderer.render( scene, camera );
+	
+}
+
+function animate() {	
+	requestAnimationFrame(animate);
+	controls.update();
+	//update();
+	render();
+}
+
+function onWindowResize () {
+	camera.aspect = ( window.innerWidth / window.innerHeight);
+	camera.updateProjectionMatrix();
+	renderer.setSize( window.innerWidth, window.innerHeight );
+	render();
+}
+
+renderer.setAnimationLoop( function () {
+
+	controls.update();
+	renderer.render( scene, camera );
+
+} );
+
+</script>
+</body>
+</html>

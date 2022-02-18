@@ -1,0 +1,6 @@
+{
+  "dependencies": {
+    "three": "^0.137.5",
+    "threex.domevents": "^1.0.1"
+  }
+}
