@@ -814,6 +814,17 @@ var ccRotate = false;
 		ccbaseMesh.receiveShadow = true;
 		ccGroup.add( ccbaseMesh );
 
+		domEvents.addEventListener(ccbaseMesh, 'mouseover', function(event) {
+			ccbaseMesh.material.color.setHex(0xff0000);
+			//return renderer.render(scene, camera);
+		});
+		domEvents.addEventListener(ccbaseMesh, 'mouseout', function(event) {
+			ccbaseMesh.material.color.setHex(0xffffff);
+		});
+		domEvents.addEventListener(ccbaseMesh, 'click', function(event){
+    console.log('you clicked on the mesh')
+}, false)
+
 		var ccShadowShadermat = new THREE.ShaderMaterial({
 			vertexShader: document.getElementById('RGBShadowVertexShader').textContent,
 			fragmentShader: document.getElementById('RGBShadowFragmentShader').textContent,
@@ -1098,11 +1109,13 @@ var ccdefQuat = null;
 
 		const controller1 = renderer.xr.getController( 0 );
 		controller1.add( new THREE.Line( geometry ) );
-		camGroup.add( controller1 );
+		controller1.position.set(0,-2,1);
+		scene.add( controller1 );
 
 		const controller2 = renderer.xr.getController( 1 );
 		controller2.add( new THREE.Line( geometry ) );
-		camGroup.add( controller2 );
+		controller2.position.set(0,2,1);
+		scene.add( controller2 );
 
 		//
 
@@ -1110,11 +1123,13 @@ var ccdefQuat = null;
 
 		const controllerGrip1 = renderer.xr.getControllerGrip( 0 );
 		controllerGrip1.add( controllerModelFactory.createControllerModel( controllerGrip1 ) );
-		camGroup.add( controllerGrip1 );
+		controllerGrip1.position.set(0,-2,1);
+		scene.add( controllerGrip1 );
 
 		const controllerGrip2 = renderer.xr.getControllerGrip( 1 );
 		controllerGrip2.add( controllerModelFactory.createControllerModel( controllerGrip2 ) );
-		camGroup.add( controllerGrip2 );
+		controllerGrip2.position.set(0,2,1);
+		scene.add( controllerGrip2 );
 }
 
 
