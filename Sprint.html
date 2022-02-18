@@ -370,12 +370,17 @@ function init () {
 	camera = new THREE.PerspectiveCamera( 75, window.innerWidth / window.innerHeight, 0.001, 1000 );
 	camera.position.z = 2;
 	var camGroup = new THREE.Object3D();
-	camGroup.add(camera);
-	//camera.position.z = 6.5;
-	//camera.position.y = 0;
+	renderer.xr.addEventListener( 'sessionstart', function ( event ) {
 
-	camGroup.position.z = 2;
-	camGroup.position.y = -1;
+		camGroup.add(camera);
+		//camera.position.z = 6.5;
+		//camera.position.y = 0;
+
+		camGroup.position.z = 2;
+		camGroup.position.y = -1;
+
+	} );
+	
 	controls = new OrbitControls( camera, renderer.domElement );
 	controls.minDistance = 0.005;
 	controls.maxDistance = 5000.0;
